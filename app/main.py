@@ -46,7 +46,12 @@ def health_check():
 
 @app.get("/api/v1/config")
 def config_status():
-    mcp_summary = get_mcp_registry().summary()
+    mcp_summary = []
+    mcp_error = None
+    try:
+        mcp_summary = get_mcp_registry().summary()
+    except Exception as exc:
+        mcp_error = str(exc)
     return {
         "vertex_ai_enabled": settings.google_use_vertex_ai,
         "google_cloud_project_configured": bool(settings.google_cloud_project),
@@ -55,6 +60,7 @@ def config_status():
         "developer_api_key_configured": bool(settings.google_api_key),
         "mcp_servers_configured": len(mcp_summary),
         "mcp_servers": mcp_summary,
+        "mcp_config_error": mcp_error,
     }
 
 
@@ -102,3 +108,4 @@ def list_notes(db: Session = Depends(get_db)):
 @app.post("/api/v1/notes", response_model=NoteRead)
 def create_note(payload: NoteCreate, db: Session = Depends(get_db)):
     return NoteRepository(db).create(payload)
+

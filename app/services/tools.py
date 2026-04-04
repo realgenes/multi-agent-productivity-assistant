@@ -81,7 +81,10 @@ class LocalProductivityTools:
 
 class MCPToolRegistry:
     def __init__(self, mcp_servers_json: str | None):
-        self._server_specs = json.loads(mcp_servers_json) if mcp_servers_json else []
+        try:
+            self._server_specs = json.loads(mcp_servers_json) if mcp_servers_json else []
+        except json.JSONDecodeError as exc:
+            raise MCPClientError(f"Invalid MCP_SERVERS_JSON configuration: {exc}") from exc
 
     def list_tools(self) -> list[dict[str, Any]]:
         tools: list[dict[str, Any]] = []
@@ -211,3 +214,4 @@ class MCPToolRegistry:
             server_name, raw_name = tool_name.split(".", 1)
             return server_name, raw_name
         return None, tool_name
+

@@ -4,28 +4,15 @@ This project is a Python API and browser UI for a multi-agent productivity assis
 
 ## Cloud-ready MCP scope
 
-For Cloud Run, the recommended supported MCP setup is:
+For Cloud Run, the supported MCP setup is:
 
-- Todoist via `@greirson/mcp-todoist`
-- Notion via `@notionhq/notion-mcp-server`
+- Todoist via globally installed `mcp-todoist`
+- Notion via globally installed `notion-mcp-server`
 - Google Calendar disabled for now
 
-This is because the local Google Calendar setup depends on interactive OAuth and local credential files, which is not a clean Cloud Run fit yet.
+These MCP packages are installed into the image at build time so Cloud Run does not rely on `npx` downloading packages at request time.
 
-## Cloud Run MCP requirements
-
-The Cloud Run container now installs Node.js so the service can launch stdio MCP servers with `npx`.
-
-Cloud deployment expects these additional GitHub secrets:
-
-- `TODOIST_API_TOKEN`
-- `NOTION_TOKEN`
-
-The GitHub Actions workflow builds `MCP_SERVERS_JSON` from those secrets and injects it into Cloud Run as an environment variable.
-
-## GitHub Actions secrets
-
-Required:
+## Required GitHub secrets
 
 - `GCP_PROJECT_ID`
 - `GCP_WORKLOAD_IDENTITY_PROVIDER`
@@ -34,19 +21,15 @@ Required:
 - `TODOIST_API_TOKEN`
 - `NOTION_TOKEN`
 
-## Verify deployed MCP
+## Verify cloud MCP
 
-After redeploy, check:
+After deploy, check:
 
 - `/api/v1/config`
 - `/api/v1/mcp/tools`
 
-A successful cloud MCP config should show:
+Expected:
 
 - `mcp_servers_configured: 2`
-- reachable `todoist`
-- reachable `notion`
-
-## Local development
-
-Local development can still use `MCP_SERVERS_FILE=./mcp-servers.local.json`.
+- `todoist` reachable
+- `notion` reachable
