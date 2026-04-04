@@ -32,6 +32,18 @@ jobs:
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: Configure deployment variables
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT_ID="$(echo -n '${{ secrets.GCP_PROJECT_ID }}' | tr -d '\r\n' | xargs)"
+          RUNTIME_SERVICE_ACCOUNT="$(echo -n '${{ secrets.GCP_RUNTIME_SERVICE_ACCOUNT }}' | tr -d '\r\n' | xargs)"
+          IMAGE="${{ env.REGION }}-docker.pkg.dev/${PROJECT_ID}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          echo "PROJECT_ID=$PROJECT_ID" >> "$GITHUB_ENV"
+          echo "RUNTIME_SERVICE_ACCOUNT=$RUNTIME_SERVICE_ACCOUNT" >> "$GITHUB_ENV"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+          echo "Using IMAGE=$IMAGE"
+
       - name: Configure Docker auth
         run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
 
@@ -39,19 +51,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          PROJECT_ID="$(echo -n '${{ secrets.GCP_PROJECT_ID }}' | tr -d '\r\n[:space:]')"
-          IMAGE="${{ env.REGION }}-docker.pkg.dev/${PROJECT_ID}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
-          echo "Using IMAGE=$IMAGE"
           docker build -t "$IMAGE" .
           docker push "$IMAGE"
-          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
 
       - name: Deploy to Cloud Run
+        shell: bash
         run: |
+          set -euo pipefail
           gcloud run deploy "${{ env.SERVICE_NAME }}" \
             --image "$IMAGE" \
             --region "${{ env.REGION }}" \
             --platform managed \
             --allow-unauthenticated \
-            --service-account "${{ secrets.GCP_RUNTIME_SERVICE_ACCOUNT }}" \
-            --set-env-vars GOOGLE_GENAI_MODEL=${{ env.GOOGLE_GENAI_MODEL }},GOOGLE_USE_VERTEX_AI=true,GOOGLE_CLOUD_PROJECT=${{ secrets.GCP_PROJECT_ID }},GOOGLE_CLOUD_LOCATION=${{ env.REGION }}
+            --service-account "$RUNTIME_SERVICE_ACCOUNT" \
+            --set-env-vars "GOOGLE_GENAI_MODEL=${{ env.GOOGLE_GENAI_MODEL }},GOOGLE_USE_VERTEX_AI=true,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GOOGLE_CLOUD_LOCATION=${{ env.REGION }}"
