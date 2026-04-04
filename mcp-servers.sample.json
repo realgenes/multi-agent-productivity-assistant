@@ -1,0 +1,29 @@
+[
+  {
+    "name": "todoist",
+    "transport": "stdio",
+    "command": "C:\\Program Files\\nodejs\\node.exe",
+    "args": ["C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npx-cli.js", "-y", "@greirson/mcp-todoist"],
+    "env": {
+      "TODOIST_API_TOKEN": "replace-me"
+    },
+    "timeout_seconds": 30
+  },
+  {
+    "name": "notion",
+    "transport": "stdio",
+    "command": "C:\\Program Files\\nodejs\\node.exe",
+    "args": ["C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npx-cli.js", "-y", "@notionhq/notion-mcp-server"],
+    "env": {
+      "NOTION_TOKEN": "replace-me"
+    },
+    "timeout_seconds": 30
+  },
+  {
+    "name": "calendar",
+    "transport": "stdio",
+    "command": "C:\\Program Files\\nodejs\\node.exe",
+    "args": ["C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npx-cli.js", "-y", "@nchufa/calendar"],
+    "timeout_seconds": 30
+  }
+]

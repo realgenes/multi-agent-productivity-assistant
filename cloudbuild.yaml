@@ -1,0 +1,36 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_IMAGE}
+      - .
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_IMAGE}
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE_NAME}
+      - --image
+      - ${_IMAGE}
+      - --region
+      - ${_REGION}
+      - --platform
+      - managed
+      - --allow-unauthenticated
+      - --service-account
+      - ${_RUNTIME_SERVICE_ACCOUNT}
+      - --set-env-vars
+      - GOOGLE_GENAI_MODEL=${_MODEL},GOOGLE_USE_VERTEX_AI=${_USE_VERTEX_AI},GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GOOGLE_CLOUD_LOCATION=${_REGION}
+
+substitutions:
+  _SERVICE_NAME: multi-agent-productivity-assistant
+  _REGION: us-central1
+  _IMAGE: us-central1-docker.pkg.dev/$PROJECT_ID/multi-agent-assistant/app:latest
+  _MODEL: gemini-2.5-flash
+  _USE_VERTEX_AI: "true"
+  _RUNTIME_SERVICE_ACCOUNT: multi-agent-run@$PROJECT_ID.iam.gserviceaccount.com

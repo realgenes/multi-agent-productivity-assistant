@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multi-Agent Productivity Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="page-shell">
+    <aside class="hero-panel">
+      <div class="hero-badge">Google GenAI + Cloud Run</div>
+      <h1>Multi-Agent Productivity Assistant</h1>
+      <p class="hero-copy">
+        Coordinate tasks, notes, and schedule workflows through a primary agent
+        that delegates to specialists and persists structured data.
+      </p>
+      <div class="status-card" id="config-card">
+        <div class="status-heading">
+          <span>Runtime status</span>
+          <span class="pill" id="health-pill">Checking</span>
+        </div>
+        <ul id="config-list" class="status-list"></ul>
+      </div>
+      <div class="tips-card">
+        <h2>Quick prompts</h2>
+        <button class="prompt-chip" data-prompt="Create a task to prepare sprint review notes by Friday and summarize my schedule">Sprint planning</button>
+        <button class="prompt-chip" data-prompt="Create a note titled Project Risks with key delivery concerns and action items">Project risks note</button>
+        <button class="prompt-chip" data-prompt="List my tasks and summarize the upcoming workload">Workload summary</button>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <section class="panel chat-panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Coordinator</p>
+            <h2>Assistant Console</h2>
+          </div>
+          <button class="ghost-button" id="refresh-button" type="button">Refresh data</button>
+        </div>
+
+        <div id="chat-feed" class="chat-feed">
+          <article class="message assistant">
+            <div class="message-role">Assistant</div>
+            <p>Ask me to create tasks, capture notes, or summarize your schedule.</p>
+          </article>
+        </div>
+
+        <form id="chat-form" class="composer">
+          <textarea id="chat-input" rows="4" placeholder="Create a task to follow up with design by tomorrow and summarize my schedule"></textarea>
+          <div class="composer-actions">
+            <span class="helper-text" id="chat-status">Ready</span>
+            <button class="primary-button" type="submit">Run workflow</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel split-panel">
+        <div class="panel-header compact">
+          <div>
+            <p class="eyebrow">Structured data</p>
+            <h2>Tasks</h2>
+          </div>
+        </div>
+        <div id="tasks-list" class="record-list empty-state">No tasks yet.</div>
+      </section>
+
+      <section class="panel split-panel">
+        <div class="panel-header compact">
+          <div>
+            <p class="eyebrow">Knowledge</p>
+            <h2>Notes</h2>
+          </div>
+        </div>
+        <div id="notes-list" class="record-list empty-state">No notes yet.</div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
