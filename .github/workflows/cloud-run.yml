@@ -9,7 +9,8 @@ on:
 env:
   SERVICE_NAME: multi-agent-productivity-assistant
   REGION: us-central1
-  IMAGE_NAME: multi-agent-assistant/app
+  ARTIFACT_REPOSITORY: multi-agent-productivity-assistant
+  IMAGE_NAME: app
   GOOGLE_GENAI_MODEL: gemini-2.5-flash
 
 jobs:
@@ -38,11 +39,19 @@ jobs:
           set -euo pipefail
           PROJECT_ID="$(echo -n '${{ secrets.GCP_PROJECT_ID }}' | tr -d '\r\n' | xargs)"
           RUNTIME_SERVICE_ACCOUNT="$(echo -n '${{ secrets.GCP_RUNTIME_SERVICE_ACCOUNT }}' | tr -d '\r\n' | xargs)"
-          IMAGE="${{ env.REGION }}-docker.pkg.dev/${PROJECT_ID}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          IMAGE="${{ env.REGION }}-docker.pkg.dev/${PROJECT_ID}/${{ env.ARTIFACT_REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
           echo "PROJECT_ID=$PROJECT_ID" >> "$GITHUB_ENV"
           echo "RUNTIME_SERVICE_ACCOUNT=$RUNTIME_SERVICE_ACCOUNT" >> "$GITHUB_ENV"
           echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
           echo "Using IMAGE=$IMAGE"
+
+      - name: Verify Artifact Registry repository exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud artifacts repositories describe "${{ env.ARTIFACT_REPOSITORY }}" \
+            --location "${{ env.REGION }}" \
+            --project "$PROJECT_ID" >/dev/null
 
       - name: Configure Docker auth
         run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
