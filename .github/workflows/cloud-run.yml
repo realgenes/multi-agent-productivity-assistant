@@ -36,11 +36,15 @@ jobs:
         run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
 
       - name: Build and push image
+        shell: bash
         run: |
-          IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          set -euo pipefail
+          PROJECT_ID="$(echo -n '${{ secrets.GCP_PROJECT_ID }}' | tr -d '\r\n[:space:]')"
+          IMAGE="${{ env.REGION }}-docker.pkg.dev/${PROJECT_ID}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          echo "Using IMAGE=$IMAGE"
           docker build -t "$IMAGE" .
           docker push "$IMAGE"
-          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
 
       - name: Deploy to Cloud Run
         run: |
