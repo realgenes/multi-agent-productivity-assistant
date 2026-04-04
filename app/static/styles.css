@@ -351,3 +351,17 @@ body {
     min-height: auto;
   }
 }
+
+
+.status-list {
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.status-list li {
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+

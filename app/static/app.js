@@ -17,6 +17,12 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
+function truncateText(value, maxLength = 120) {
+  const text = String(value || "");
+  if (text.length <= maxLength) return text;
+  return text.slice(0, maxLength - 3) + "...";
+}
+
 function appendMessage(role, content, extraHtml = "") {
   const article = document.createElement("article");
   article.className = `message ${role}`;
@@ -69,9 +75,12 @@ function renderConfig(config, healthOk) {
   const mcpLines = (config.mcp_servers || []).map((server) => {
     const base = `${server.name} (${server.transport})`;
     if (server.reachable) {
-      return `<li>MCP: ${escapeHtml(base)} - ${server.tool_count} tool(s): ${escapeHtml((server.tools || []).join(", ") || "none")}</li>`;
+      const tools = server.tools || [];
+      const toolsPreview = tools.length > 3 ? `${tools.slice(0, 3).join(", ")}, +${tools.length - 3} more` : (tools.join(", ") || "none");
+      return `<li title="${escapeHtml(`${base} - ${tools.join(", ") || "none"}`)}">MCP: ${escapeHtml(base)} - ${server.tool_count} tool(s): ${escapeHtml(truncateText(toolsPreview, 90))}</li>`;
     }
-    return `<li>MCP: ${escapeHtml(base)} - unreachable${server.error ? `: ${escapeHtml(server.error)}` : ""}</li>`;
+    const errorText = server.error ? truncateText(server.error, 120) : "";
+    return `<li title="${escapeHtml(server.error || "")}">MCP: ${escapeHtml(base)} - unreachable${errorText ? `: ${escapeHtml(errorText)}` : ""}</li>`;
   }).join("");
 
   configList.innerHTML = `
@@ -170,3 +179,4 @@ refreshData().catch((error) => {
   appendMessage("error", error.message);
   chatStatus.textContent = "Startup check failed";
 });
+
