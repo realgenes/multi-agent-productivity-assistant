@@ -4,6 +4,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.config import Settings
 from app.schemas import ChatResponse, ToolResult, WorkflowPlan, WorkflowStep
 from app.services.agents import KnowledgeAgent, PlanningAgent, ScheduleAgent, TaskAgent
 from app.services.llm import GeminiService
@@ -11,10 +12,11 @@ from app.services.tools import LocalProductivityTools, MCPToolRegistry
 
 
 class ProductivityOrchestrator:
-    def __init__(self, llm: GeminiService, db: Session, mcp_servers_json: str | None):
+    def __init__(self, llm: GeminiService, db: Session, settings: Settings, mcp_servers_json: str | None):
         self.llm = llm
         self.db = db
-        self.local_tools = LocalProductivityTools(db)
+        self.settings = settings
+        self.local_tools = LocalProductivityTools(db, settings)
         self.mcp_tools = MCPToolRegistry(mcp_servers_json)
         self.planner = PlanningAgent(llm)
         self.specialists = {
@@ -40,19 +42,11 @@ class ProductivityOrchestrator:
             return "note_create"
         if any(token in normalized for token in ["list_notes", "note_get", "note_list"]):
             return "note_read"
+        if "list_calendar_events" in normalized:
+            return "calendar"
         if "schedule_summary" in normalized or "calendar" in qualified or "event" in normalized:
             return "schedule"
         return normalized
-
-    def _tool_definition(self, tool_name: str) -> dict[str, Any] | None:
-        canonical = self._canonical_tool_name(tool_name).lower()
-        qualified = tool_name.lower()
-        for tool in self._all_tools():
-            raw_name = tool["name"].lower()
-            raw_qualified = tool.get("qualified_name", tool["name"]).lower()
-            if qualified in {raw_name, raw_qualified} or canonical in {raw_name, raw_qualified}:
-                return tool
-        return None
 
     def _pick_tool(self, step_action: str, user_message: str) -> tuple[str, dict[str, Any]]:
         action = step_action.lower()
@@ -73,6 +67,8 @@ class ProductivityOrchestrator:
             if message_dynamic_tool and message_dynamic_group == "note_create":
                 return message_dynamic_tool, {}
             return "create_note", {}
+        if "calendar" in action and self.settings.google_calendar_configured():
+            return "list_calendar_events", {}
         if "list task" in action or "retrieve task" in action:
             return "list_tasks", {}
         if "create_task" in action or "create task" in action or "add task" in action:
@@ -80,7 +76,7 @@ class ProductivityOrchestrator:
                 return message_dynamic_tool, {}
             return "create_task", {}
         if "schedule_summary" in action or "schedule" in action or "timeline" in action:
-            if message_dynamic_tool and message_dynamic_group == "schedule":
+            if message_dynamic_tool and message_dynamic_group in {"schedule", "calendar"}:
                 return message_dynamic_tool, {}
             return "schedule_summary", {}
         if "create_note" in action or ("note" in action and ("create" in action or "save" in action)):
@@ -111,6 +107,7 @@ User request: {message}
 Rules:
 - For create_task return {{"title": "...", "description": "...", "due_date": "..."}}.
 - For create_note return {{"title": "...", "content": "..."}}.
+- For list_calendar_events return {{"max_results": 8, "days_ahead": 7}}.
 - For unknown or external tools, infer a best-effort arguments object from the request.
 - For read-only tools return {{}}.
 """
@@ -202,8 +199,15 @@ Tool results:
             elif "note_create" not in ordered_groups:
                 ordered.append("create_note")
                 ordered_groups.add("note_create")
+        if any(term in lowered for term in ["calendar events", "my calendar", "google calendar"]):
+            if dynamic_tool and dynamic_group == "calendar" and dynamic_group not in ordered_groups:
+                ordered.append(dynamic_tool)
+                ordered_groups.add(dynamic_group)
+            elif self.settings.google_calendar_configured() and "calendar" not in ordered_groups:
+                ordered.append("list_calendar_events")
+                ordered_groups.add("calendar")
         if any(term in lowered for term in ["schedule", "calendar", "timeline", "upcoming workload", "summarize my schedule"]):
-            if dynamic_tool and dynamic_group == "schedule" and dynamic_group not in ordered_groups:
+            if dynamic_tool and dynamic_group in {"schedule", "calendar"} and dynamic_group not in ordered_groups:
                 ordered.append(dynamic_tool)
                 ordered_groups.add(dynamic_group)
             elif "schedule" not in ordered_groups:
@@ -272,6 +276,11 @@ Tool results:
             if due_value:
                 payload["due_string"] = due_value
             return payload
+        if normalized_tool == "list_calendar_events":
+            return {
+                "max_results": 8,
+                "days_ahead": 7,
+            }
         if normalized_tool == "create_note":
             return {
                 "title": cleaned[:80] or "Quick note",

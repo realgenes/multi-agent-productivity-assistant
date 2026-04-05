@@ -365,3 +365,107 @@ body {
   white-space: normal;
 }
 
+.page-shell {
+  max-width: 1440px;
+  margin: 0 auto;
+  grid-template-columns: minmax(260px, 320px) 1fr;
+  gap: 20px;
+  padding: 18px;
+}
+
+.hero-panel,
+.panel {
+  border-radius: 24px;
+}
+
+.hero-panel {
+  padding: 22px;
+}
+
+.hero-panel h1 {
+  margin: 14px 0 10px;
+  font-size: clamp(1.85rem, 4vw, 2.8rem);
+  line-height: 1;
+}
+
+.hero-copy {
+  font-size: 0.95rem;
+  line-height: 1.55;
+  margin-bottom: 18px;
+}
+
+.status-card,
+.tips-card {
+  border-radius: 18px;
+  padding: 14px;
+}
+
+.tips-card {
+  margin-top: 14px;
+}
+
+.status-list {
+  gap: 8px;
+  max-height: 220px;
+}
+
+.status-list li {
+  font-size: 0.88rem;
+}
+
+.prompt-chip {
+  margin-top: 8px;
+  border-radius: 14px;
+  padding: 11px 13px;
+  font-size: 0.9rem;
+}
+
+.workspace {
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.78fr);
+  gap: 20px;
+}
+
+.panel {
+  padding: 18px;
+}
+
+.chat-panel {
+  min-height: calc(100vh - 36px);
+}
+
+.split-panel {
+  min-height: 260px;
+  max-height: calc((100vh - 56px) / 2);
+  display: flex;
+  flex-direction: column;
+}
+
+.record-list {
+  gap: 10px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.record-card {
+  border-radius: 16px;
+  padding: 14px;
+}
+
+.record-card p {
+  margin: 8px 0 0;
+  line-height: 1.45;
+}
+
+.composer textarea {
+  min-height: 96px;
+}
+
+@media (max-width: 1200px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 0.82fr);
+  }
+
+  .split-panel {
+    max-height: none;
+  }
+}

@@ -58,6 +58,7 @@ def config_status():
         "google_cloud_location": settings.google_cloud_location,
         "model": settings.google_genai_model,
         "developer_api_key_configured": bool(settings.google_api_key),
+        "google_calendar_configured": settings.google_calendar_configured(),
         "mcp_servers_configured": len(mcp_summary),
         "mcp_servers": mcp_summary,
         "mcp_config_error": mcp_error,
@@ -76,7 +77,12 @@ def list_mcp_tools():
 def chat(request: ChatRequest, db: Session = Depends(get_db)):
     try:
         llm = GeminiService(settings)
-        orchestrator = ProductivityOrchestrator(llm=llm, db=db, mcp_servers_json=settings.resolved_mcp_servers_json())
+        orchestrator = ProductivityOrchestrator(
+            llm=llm,
+            db=db,
+            settings=settings,
+            mcp_servers_json=settings.resolved_mcp_servers_json(),
+        )
         response = orchestrator.handle(request.message)
         WorkflowRepository(db).create(
             user_message=request.message,
@@ -108,4 +114,3 @@ def list_notes(db: Session = Depends(get_db)):
 @app.post("/api/v1/notes", response_model=NoteRead)
 def create_note(payload: NoteCreate, db: Session = Depends(get_db)):
     return NoteRepository(db).create(payload)
-

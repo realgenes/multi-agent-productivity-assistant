@@ -1,6 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import List, Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     google_use_vertex_ai: bool = False
     google_cloud_project: Optional[str] = None
     google_cloud_location: str = "us-central1"
+    google_calendar_client_id: Optional[str] = None
+    google_calendar_client_secret: Optional[str] = None
+    google_calendar_refresh_token: Optional[str] = None
+    google_calendar_id: str = "primary"
+    google_calendar_timezone: str = "Asia/Kolkata"
 
     database_url: str = "sqlite:///./data/app.db"
     allowed_origins: List[str] = Field(default_factory=lambda: ["*"])
@@ -39,6 +44,13 @@ class Settings(BaseSettings):
         if self.mcp_servers_file:
             return Path(self.mcp_servers_file).read_text(encoding="utf-8")
         return None
+
+    def google_calendar_configured(self) -> bool:
+        return bool(
+            self.google_calendar_client_id
+            and self.google_calendar_client_secret
+            and self.google_calendar_refresh_token
+        )
 
 
 @lru_cache

@@ -5,7 +5,9 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app import schemas
+from app.config import Settings
 from app.repositories import NoteRepository, TaskRepository
+from app.services.calendar import CalendarConfigurationError, GoogleCalendarService
 from app.services.mcp_client import MCPClientError, StdioMCPClient, StreamableHTTPMCPClient
 
 
@@ -15,12 +17,13 @@ class ToolContext:
 
 
 class LocalProductivityTools:
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, settings: Settings):
         self.tasks = TaskRepository(db)
         self.notes = NoteRepository(db)
+        self.settings = settings
 
     def list_tools(self) -> list[dict[str, Any]]:
-        return [
+        tools = [
             {
                 "name": "create_task",
                 "description": "Create a structured task entry in the database.",
@@ -51,12 +54,23 @@ class LocalProductivityTools:
             },
             {
                 "name": "schedule_summary",
-                "description": "Summarize upcoming work from stored tasks.",
+                "description": "Summarize upcoming work from stored tasks and Google Calendar when available.",
                 "parameters": {},
                 "server": "local",
                 "qualified_name": "local.schedule_summary",
             },
         ]
+        if self.settings.google_calendar_configured():
+            tools.append(
+                {
+                    "name": "list_calendar_events",
+                    "description": "List upcoming Google Calendar events for the next few days.",
+                    "parameters": {"max_results": "integer|null", "days_ahead": "integer|null"},
+                    "server": "local",
+                    "qualified_name": "local.list_calendar_events",
+                }
+            )
+        return tools
 
     def execute(self, tool_name: str, arguments: dict[str, Any]) -> Any:
         normalized_name = tool_name.split(".")[-1]
@@ -70,12 +84,43 @@ class LocalProductivityTools:
             return schemas.NoteRead.model_validate(record).model_dump()
         if normalized_name == "list_notes":
             return [schemas.NoteRead.model_validate(note).model_dump() for note in self.notes.list_all()]
+        if normalized_name == "list_calendar_events":
+            calendar = GoogleCalendarService(self.settings)
+            return calendar.list_upcoming_events(
+                max_results=int(arguments.get("max_results") or 10),
+                days_ahead=int(arguments.get("days_ahead") or 7),
+            )
         if normalized_name == "schedule_summary":
             tasks = [schemas.TaskRead.model_validate(task).model_dump() for task in self.tasks.list_all()]
-            if not tasks:
-                return {"summary": "No tasks are stored yet."}
-            due_lines = [f"{task['title']} (status: {task['status']}, due: {task['due_date'] or 'unspecified'})" for task in tasks]
-            return {"summary": "Upcoming workload:\n" + "\n".join(due_lines)}
+            task_lines = []
+            for task in tasks:
+                task_lines.append(f"{task['title']} (status: {task['status']}, due: {task['due_date'] or 'unspecified'})")
+
+            calendar_lines: list[str] = []
+            calendar_events: list[dict[str, Any]] = []
+            if self.settings.google_calendar_configured():
+                try:
+                    calendar_summary = GoogleCalendarService(self.settings).summarize_upcoming_events(max_results=6, days_ahead=7)
+                    calendar_events = calendar_summary.get("events", [])
+                    calendar_lines = [f"{event['title']} at {event['start'] or 'unspecified'}" for event in calendar_events]
+                except CalendarConfigurationError as exc:
+                    calendar_lines = [f"Calendar unavailable: {exc}"]
+                except Exception as exc:
+                    calendar_lines = [f"Calendar request failed: {exc}"]
+
+            if not task_lines and not calendar_lines:
+                return {"summary": "No tasks or calendar events are available yet.", "tasks": [], "events": []}
+
+            sections = []
+            if task_lines:
+                sections.append("Tasks:\n" + "\n".join(task_lines))
+            if calendar_lines:
+                sections.append("Calendar:\n" + "\n".join(calendar_lines))
+            return {
+                "summary": "Upcoming workload:\n" + "\n\n".join(sections),
+                "tasks": tasks,
+                "events": calendar_events,
+            }
         raise ValueError(f"Unsupported tool: {tool_name}")
 
 
@@ -214,4 +259,3 @@ class MCPToolRegistry:
             server_name, raw_name = tool_name.split(".", 1)
             return server_name, raw_name
         return None, tool_name
-

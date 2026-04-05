@@ -89,6 +89,7 @@ function renderConfig(config, healthOk) {
     <li>Location: ${escapeHtml(config.google_cloud_location)}</li>
     <li>Model: ${escapeHtml(config.model)}</li>
     <li>Developer API key set: ${config.developer_api_key_configured ? "yes" : "no"}</li>
+    <li>Google Calendar configured: ${config.google_calendar_configured ? "yes" : "no"}</li>
     <li>MCP servers configured: ${config.mcp_servers_configured || 0}</li>
     ${mcpLines}
   `;
@@ -179,4 +180,3 @@ refreshData().catch((error) => {
   appendMessage("error", error.message);
   chatStatus.textContent = "Startup check failed";
 });
-

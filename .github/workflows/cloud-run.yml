@@ -47,6 +47,11 @@ jobs:
           GOOGLE_USE_VERTEX_AI: "true"
           GOOGLE_CLOUD_PROJECT: "${PROJECT_ID}"
           GOOGLE_CLOUD_LOCATION: "${{ env.REGION }}"
+          GOOGLE_CALENDAR_CLIENT_ID: "${{ secrets.GOOGLE_CALENDAR_CLIENT_ID }}"
+          GOOGLE_CALENDAR_CLIENT_SECRET: "${{ secrets.GOOGLE_CALENDAR_CLIENT_SECRET }}"
+          GOOGLE_CALENDAR_REFRESH_TOKEN: "${{ secrets.GOOGLE_CALENDAR_REFRESH_TOKEN }}"
+          GOOGLE_CALENDAR_ID: "${{ secrets.GOOGLE_CALENDAR_ID }}"
+          GOOGLE_CALENDAR_TIMEZONE: "${{ secrets.GOOGLE_CALENDAR_TIMEZONE }}"
           MCP_SERVERS_JSON: '[{"name":"todoist","transport":"stdio","command":"mcp-todoist","env":{"TODOIST_API_TOKEN":"${{ secrets.TODOIST_API_TOKEN }}"},"timeout_seconds":30},{"name":"notion","transport":"stdio","command":"notion-mcp-server","env":{"NOTION_TOKEN":"${{ secrets.NOTION_TOKEN }}"},"timeout_seconds":30}]'
           EOF
 
@@ -84,3 +89,4 @@ jobs:
             --allow-unauthenticated \
             --service-account "$RUNTIME_SERVICE_ACCOUNT" \
             --env-vars-file=cloudrun-env.yaml
+
