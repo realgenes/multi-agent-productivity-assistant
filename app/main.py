@@ -19,8 +19,6 @@ from app.services.tools import MCPToolRegistry
 
 import os
 
-print("RAW ENV:", os.getenv("GOOGLE_API_KEY"))
-
 settings = get_settings()
 Base.metadata.create_all(bind=engine)
 static_dir = Path(__file__).parent / "static"
@@ -171,6 +169,3 @@ def delete_note(note_id: int, db: Session = Depends(get_db)):
     return {"status": "deleted"}
 
 
-
-print("API KEY:", settings.google_api_key)
-print("VERTEX:", settings.google_use_vertex_ai)
