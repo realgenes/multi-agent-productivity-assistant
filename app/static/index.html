@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,9 +10,26 @@
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
+  <!-- Toast container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- Confirm dialog -->
+  <div id="confirm-overlay" class="confirm-overlay hidden">
+    <div class="confirm-dialog">
+      <p id="confirm-message">Are you sure?</p>
+      <div class="confirm-actions">
+        <button class="ghost-button" id="confirm-cancel">Cancel</button>
+        <button class="danger-button" id="confirm-ok">Delete</button>
+      </div>
+    </div>
+  </div>
+
   <div class="page-shell">
     <aside class="hero-panel">
-      <div class="hero-badge">Google GenAI + Cloud Run</div>
+      <div class="hero-top">
+        <div class="hero-badge">Google GenAI + Cloud Run</div>
+        <button class="theme-toggle" id="theme-toggle" title="Toggle dark mode">🌙</button>
+      </div>
       <h1>Multi-Agent Productivity Assistant</h1>
       <p class="hero-copy">
         Coordinate tasks, notes, and schedule workflows through a primary agent
@@ -40,14 +57,23 @@
             <p class="eyebrow">Coordinator</p>
             <h2>Assistant Console</h2>
           </div>
-          <button class="ghost-button" id="refresh-button" type="button">Refresh data</button>
+          <div class="header-actions">
+            <button class="ghost-button" id="clear-chat-button" type="button">Clear chat</button>
+            <button class="ghost-button" id="refresh-button" type="button">Refresh data</button>
+          </div>
         </div>
 
         <div id="chat-feed" class="chat-feed">
           <article class="message assistant">
             <div class="message-role">Assistant</div>
             <p>Ask me to create tasks, capture notes, or summarize your schedule.</p>
+            <div class="message-time">Just now</div>
           </article>
+        </div>
+
+        <!-- Typing indicator -->
+        <div id="typing-indicator" class="typing-indicator hidden">
+          <span></span><span></span><span></span>
         </div>
 
         <form id="chat-form" class="composer">
@@ -66,7 +92,10 @@
             <h2>Tasks</h2>
           </div>
         </div>
-        <div id="tasks-list" class="record-list empty-state">No tasks yet.</div>
+        <div id="tasks-list" class="record-list empty-state">
+          <div class="empty-illustration">📋</div>
+          <p>No tasks yet.</p>
+        </div>
       </section>
 
       <section class="panel split-panel">
@@ -76,7 +105,10 @@
             <h2>Notes</h2>
           </div>
         </div>
-        <div id="notes-list" class="record-list empty-state">No notes yet.</div>
+        <div id="notes-list" class="record-list empty-state">
+          <div class="empty-illustration">📝</div>
+          <p>No notes yet.</p>
+        </div>
       </section>
     </main>
   </div>
@@ -84,4 +116,3 @@
   <script src="/static/app.js"></script>
 </body>
 </html>
-

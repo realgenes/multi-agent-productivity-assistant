@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import timezone, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -19,8 +19,25 @@ class GoogleCalendarService:
                 "GOOGLE_CALENDAR_CLIENT_SECRET, and GOOGLE_CALENDAR_REFRESH_TOKEN."
             )
 
+    def create_event(self, title: str, start: datetime, end: datetime, description: str = "") -> dict:
+        token = self._refresh_access_token()
+        body = {
+            "summary": title,
+            "description": description,
+            "start": {"dateTime": start.isoformat(), "timeZone": self.settings.google_calendar_timezone},
+            "end": {"dateTime": end.isoformat(), "timeZone": self.settings.google_calendar_timezone},
+        }
+        with httpx.Client(timeout=20) as client:
+            response = client.post(
+                f"https://www.googleapis.com/calendar/v3/calendars/{self.settings.google_calendar_id}/events",
+                headers={"Authorization": f"Bearer {token}"},
+                json=body,
+            )
+            response.raise_for_status()
+            return response.json()
+
     def list_upcoming_events(self, max_results: int = 10, days_ahead: int = 7) -> list[dict[str, Any]]:
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         time_min = now.isoformat().replace("+00:00", "Z")
         time_max = (now + timedelta(days=days_ahead)).isoformat().replace("+00:00", "Z")
         token = self._refresh_access_token()

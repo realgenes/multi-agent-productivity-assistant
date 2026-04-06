@@ -23,25 +23,38 @@ class WorkflowPlan(BaseModel):
     steps: List[WorkflowStep]
 
 
+from pydantic import BaseModel
+from typing import Any, Optional
+
+
 class ChatResponse(BaseModel):
     answer: str
-    plan: WorkflowPlan
-    tool_results: List[ToolResult]
+    plan: Any
+    status: Optional[str] = None
 
-
+    model_config = {
+        "from_attributes": True
+    }
 class TaskCreate(BaseModel):
     title: str
-    description: Optional[str] = None
-    due_date: Optional[str] = None
+    description: str | None = None
+    due_date: str | None = None
+
+from datetime import datetime
+from pydantic import BaseModel
 
 
-class TaskRead(TaskCreate):
+class TaskRead(BaseModel):
     id: int
-    status: str
+    title: str
+    description: str | None = None
+    due_date: datetime | None = None
+    status: str = "pending"
+    created_at: datetime
 
-    model_config = {"from_attributes": True}
-
-
+    model_config = {
+        "from_attributes": True
+    }
 class NoteCreate(BaseModel):
     title: str
     content: str
@@ -51,3 +64,4 @@ class NoteRead(NoteCreate):
     id: int
 
     model_config = {"from_attributes": True}
+

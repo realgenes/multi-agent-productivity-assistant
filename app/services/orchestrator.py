@@ -1,289 +1,142 @@
-import json
 import re
-from typing import Any
-
 from sqlalchemy.orm import Session
-
 from app.config import Settings
-from app.schemas import ChatResponse, ToolResult, WorkflowPlan, WorkflowStep
-from app.services.agents import KnowledgeAgent, PlanningAgent, ScheduleAgent, TaskAgent
-from app.services.llm import GeminiService
 from app.services.tools import LocalProductivityTools, MCPToolRegistry
+from app.repositories import DuplicateError
 
 
 class ProductivityOrchestrator:
-    def __init__(self, llm: GeminiService, db: Session, settings: Settings, mcp_servers_json: str | None):
-        self.llm = llm
+    def __init__(self, llm, db: Session, settings: Settings, mcp_servers_json: str | None):
         self.db = db
         self.settings = settings
         self.local_tools = LocalProductivityTools(db, settings)
         self.mcp_tools = MCPToolRegistry(mcp_servers_json)
-        self.planner = PlanningAgent(llm)
-        self.specialists = {
-            TaskAgent.name: TaskAgent(),
-            ScheduleAgent.name: ScheduleAgent(),
-            KnowledgeAgent.name: KnowledgeAgent(),
-        }
 
-    def _all_tools(self) -> list[dict[str, Any]]:
-        return self.local_tools.list_tools() + self.mcp_tools.list_tools()
-
-    def _canonical_tool_name(self, tool_name: str) -> str:
-        return tool_name.split(".")[-1]
-
-    def _tool_group(self, tool_name: str) -> str:
-        normalized = self._canonical_tool_name(tool_name).lower()
-        qualified = tool_name.lower()
-        if any(token in normalized for token in ["create_task", "task_create", "subtask_create", "tasks_bulk_create"]):
-            return "task_create"
-        if any(token in normalized for token in ["list_tasks", "task_get", "tasks_get", "task_list"]):
-            return "task_read"
-        if any(token in normalized for token in ["create_note", "note_create"]):
-            return "note_create"
-        if any(token in normalized for token in ["list_notes", "note_get", "note_list"]):
-            return "note_read"
-        if "list_calendar_events" in normalized:
-            return "calendar"
-        if "schedule_summary" in normalized or "calendar" in qualified or "event" in normalized:
-            return "schedule"
-        return normalized
-
-    def _pick_tool(self, step_action: str, user_message: str) -> tuple[str, dict[str, Any]]:
-        action = step_action.lower()
-        message = user_message.lower()
-
-        dynamic_tool = self._match_dynamic_tool(step_action)
-        if dynamic_tool:
-            return dynamic_tool, {}
-
-        message_dynamic_tool = self._match_dynamic_tool(user_message)
-        message_dynamic_group = self._tool_group(message_dynamic_tool) if message_dynamic_tool else None
-
-        if any(term in message for term in ["create a task", "create task", "add a task", "add task", "make a task", "new task"]):
-            if message_dynamic_tool and message_dynamic_group == "task_create":
-                return message_dynamic_tool, {}
-            return "create_task", {}
-        if any(term in message for term in ["create a note", "create note", "save a note", "save note", "write a note"]):
-            if message_dynamic_tool and message_dynamic_group == "note_create":
-                return message_dynamic_tool, {}
-            return "create_note", {}
-        if "calendar" in action and self.settings.google_calendar_configured():
-            return "list_calendar_events", {}
-        if "list task" in action or "retrieve task" in action:
-            return "list_tasks", {}
-        if "create_task" in action or "create task" in action or "add task" in action:
-            if message_dynamic_tool and message_dynamic_group == "task_create":
-                return message_dynamic_tool, {}
-            return "create_task", {}
-        if "schedule_summary" in action or "schedule" in action or "timeline" in action:
-            if message_dynamic_tool and message_dynamic_group in {"schedule", "calendar"}:
-                return message_dynamic_tool, {}
-            return "schedule_summary", {}
-        if "create_note" in action or ("note" in action and ("create" in action or "save" in action)):
-            if message_dynamic_tool and message_dynamic_group == "note_create":
-                return message_dynamic_tool, {}
-            return "create_note", {}
-        if "list_notes" in action or "note" in action or "knowledge" in action:
-            return "list_notes", {}
-        return "list_tasks", {}
-
-    def _match_dynamic_tool(self, text: str) -> str | None:
-        normalized = text.lower()
-        for tool in self._all_tools():
-            raw_name = tool["name"].lower()
-            qualified_name = tool.get("qualified_name", raw_name).lower()
-            if raw_name in normalized or qualified_name in normalized:
-                return tool.get("qualified_name", tool["name"])
-        return None
-
-    def _extract_tool_args(self, message: str, tool_name: str) -> dict[str, Any]:
-        prompt = f"""
-Extract arguments for tool `{tool_name}` from the user request.
-Return valid JSON only.
-
-Tool name: {tool_name}
-User request: {message}
-
-Rules:
-- For create_task return {{"title": "...", "description": "...", "due_date": "..."}}.
-- For create_note return {{"title": "...", "content": "..."}}.
-- For list_calendar_events return {{"max_results": 8, "days_ahead": 7}}.
-- For unknown or external tools, infer a best-effort arguments object from the request.
-- For read-only tools return {{}}.
-"""
-        try:
-            payload = self.llm.generate_json(prompt)
-            if isinstance(payload, dict) and payload:
-                return payload
-        except Exception:
-            pass
-        return self._fallback_tool_args(message, tool_name)
-
-    def _run_tool(self, tool_name: str, args: dict[str, Any]) -> Any:
-        local_tool_names = {tool["name"] for tool in self.local_tools.list_tools()}
-        local_qualified_names = {tool["qualified_name"] for tool in self.local_tools.list_tools()}
-        if tool_name in local_tool_names or tool_name in local_qualified_names:
-            return self.local_tools.execute(tool_name, args)
-        return self.mcp_tools.execute(tool_name, args)
-
-    def _final_answer(self, message: str, plan: WorkflowPlan, results: list[ToolResult]) -> str:
-        prompt = f"""
-You are a helpful productivity assistant.
-Create a concise final response for the user.
-
-User request:
-{message}
-
-Execution plan:
-{plan.model_dump_json(indent=2)}
-
-Tool results:
-{json.dumps([result.model_dump() for result in results], indent=2)}
-"""
-        return self.llm.generate_text(prompt).strip()
-
-    def handle(self, message: str) -> ChatResponse:
-        plan = self.planner.create_plan(message, self._all_tools())
-        tool_results: list[ToolResult] = []
-        executed_groups: set[str] = set()
-
-        for tool_name in self._tool_sequence_from_message(message):
-            tool_group = self._tool_group(tool_name)
-            if tool_group in executed_groups:
-                continue
-            args = self._extract_tool_args(message, tool_name)
-            result = self._run_tool(tool_name, args)
-            tool_results.append(ToolResult(tool_name=tool_name, result=result))
-            executed_groups.add(tool_group)
-
-        for step in plan.steps:
-            specialist = self.specialists.get(step.agent)
-            if specialist is None:
-                continue
-            tool_name, _ = self._pick_tool(step.action, message)
-            tool_group = self._tool_group(tool_name)
-            if tool_group in executed_groups:
-                continue
-            args = self._extract_tool_args(message, tool_name)
-            result = self._run_tool(tool_name, args)
-            tool_results.append(ToolResult(tool_name=tool_name, result=result))
-            executed_groups.add(tool_group)
-
-        if not plan.steps:
-            plan = WorkflowPlan(
-                summary=re.sub(r"\s+", " ", message).strip()[:100],
-                steps=[WorkflowStep(agent="task-agent", action="list_tasks", rationale="Fallback action when intent is unclear.")],
-            )
-
-        answer = self._final_answer(message, plan, tool_results)
-        return ChatResponse(answer=answer, plan=plan, tool_results=tool_results)
-
-    def _tool_sequence_from_message(self, message: str) -> list[str]:
-        lowered = message.lower()
-        ordered: list[str] = []
-        ordered_groups: set[str] = set()
-        dynamic_tool = self._match_dynamic_tool(message)
-        dynamic_group = self._tool_group(dynamic_tool) if dynamic_tool else None
-
-        if any(term in lowered for term in ["create a task", "create task", "add a task", "add task", "make a task", "new task"]):
-            if dynamic_tool and dynamic_group == "task_create":
-                ordered.append(dynamic_tool)
-                ordered_groups.add(dynamic_group)
-            else:
-                ordered.append("create_task")
-                ordered_groups.add("task_create")
-        if any(term in lowered for term in ["create a note", "create note", "save a note", "save note", "write a note"]):
-            if dynamic_tool and dynamic_group == "note_create" and dynamic_group not in ordered_groups:
-                ordered.append(dynamic_tool)
-                ordered_groups.add(dynamic_group)
-            elif "note_create" not in ordered_groups:
-                ordered.append("create_note")
-                ordered_groups.add("note_create")
-        if any(term in lowered for term in ["calendar events", "my calendar", "google calendar"]):
-            if dynamic_tool and dynamic_group == "calendar" and dynamic_group not in ordered_groups:
-                ordered.append(dynamic_tool)
-                ordered_groups.add(dynamic_group)
-            elif self.settings.google_calendar_configured() and "calendar" not in ordered_groups:
-                ordered.append("list_calendar_events")
-                ordered_groups.add("calendar")
-        if any(term in lowered for term in ["schedule", "calendar", "timeline", "upcoming workload", "summarize my schedule"]):
-            if dynamic_tool and dynamic_group in {"schedule", "calendar"} and dynamic_group not in ordered_groups:
-                ordered.append(dynamic_tool)
-                ordered_groups.add(dynamic_group)
-            elif "schedule" not in ordered_groups:
-                ordered.append("schedule_summary")
-                ordered_groups.add("schedule")
-        if dynamic_tool and dynamic_group not in ordered_groups:
-            ordered.append(dynamic_tool)
-            ordered_groups.add(dynamic_group)
-        if not ordered and any(term in lowered for term in ["list tasks", "show tasks", "my tasks"]):
-            ordered.append("list_tasks")
-        if not ordered and any(term in lowered for term in ["list notes", "show notes", "my notes"]):
-            ordered.append("list_notes")
-        return ordered
-
-    def _fallback_tool_args(self, message: str, tool_name: str) -> dict[str, Any]:
+    def _fallback_tool_args(self, message: str, tool_name: str) -> dict:
         cleaned = re.sub(r"\s+", " ", message).strip()
-        normalized_tool = self._canonical_tool_name(tool_name).lower()
-        lower_tool_name = tool_name.lower()
-        due_match = re.search(r"\bby ([^.!,]+)", cleaned, re.IGNORECASE)
-        due_value = due_match.group(1).strip() if due_match else None
-        if normalized_tool == "create_task":
+        lowered = cleaned.lower()
+
+        if tool_name == "create_task":
             title = cleaned
             for prefix in [
-                "create a task to",
-                "create task to",
-                "add a task to",
-                "add task to",
-                "make a task to",
-                "new task to",
-                "create a task",
-                "create task",
-                "add a task",
-                "add task",
+                "create a task to", "create task to", "add a task to", "add task to",
+                "make a task to", "new task to", "create a task", "create task",
+                "add a task", "add task"
             ]:
-                if cleaned.lower().startswith(prefix):
+                if lowered.startswith(prefix):
                     title = cleaned[len(prefix):].strip()
                     break
+
             title = re.sub(r"\bby [^.!,]+", "", title, flags=re.IGNORECASE).strip(" .:-")
+
             return {
-                "title": (title[:255] or "Untitled task"),
-                "description": cleaned[:500],
-                "due_date": due_value,
+                "title": title or "Untitled task",
+                "description": cleaned,
+                "due_date": None
             }
-        if "todoist" in lower_tool_name and any(token in normalized_tool for token in ["task_create", "create_task"]):
-            content = cleaned
+
+        if tool_name == "create_note":
+            title = cleaned
             for prefix in [
-                "create a task to",
-                "create task to",
-                "add a task to",
-                "add task to",
-                "make a task to",
-                "new task to",
-                "create a task",
-                "create task",
-                "add a task",
-                "add task",
+                "create a note titled", "create note titled", "add a note titled", "add note titled",
+                "save a note titled", "save note titled", "new note titled",
+                "create a note about", "create note about", "add a note about",
+                "create a note", "create note", "add a note", "add note",
+                "save a note", "save note", "new note", "capture a note",
             ]:
-                if cleaned.lower().startswith(prefix):
-                    content = cleaned[len(prefix):].strip()
+                if lowered.startswith(prefix):
+                    title = cleaned[len(prefix):].strip().strip('"\'')
                     break
-            content = re.sub(r"\bby [^.!,]+", "", content, flags=re.IGNORECASE).strip(" .:-")
-            payload = {
-                "content": content[:255] or "Untitled task",
-                "description": cleaned[:500],
-            }
-            if due_value:
-                payload["due_string"] = due_value
-            return payload
-        if normalized_tool == "list_calendar_events":
+            # Truncate to first sentence or 80 chars for the title
+            title = re.split(r"[.!?\n]", title)[0].strip()[:80] or "Quick note"
             return {
-                "max_results": 8,
-                "days_ahead": 7,
+                "title": title,
+                "content": cleaned
             }
-        if normalized_tool == "create_note":
-            return {
-                "title": cleaned[:80] or "Quick note",
-                "content": cleaned,
-            }
-        return {"query": cleaned}
+
+        return {}
+
+    def _extract_delete_target(self, message: str) -> str | None:
+        """Returns None for bulk delete (all), or the title string for single delete."""
+        cleaned = re.sub(r"\s+", " ", message).strip()
+        lowered = cleaned.lower()
+
+        # Bulk delete patterns: "delete all tasks", "delete tasks", "remove all notes", etc.
+        bulk_patterns = [
+            r"^(delete|remove)\s+all\s+(tasks?|notes?)$",
+            r"^(delete|remove)\s+(tasks?|notes?)$",
+            r"^clear\s+all\s+(tasks?|notes?)$",
+            r"^clear\s+(tasks?|notes?)$",
+        ]
+        for pattern in bulk_patterns:
+            if re.match(pattern, lowered):
+                return None  # signals bulk delete
+
+        # Single delete: strip the verb+noun prefix to get the title
+        for prefix in [
+            "delete the task", "remove the task", "delete task",  "remove task",
+            "delete the note", "remove the note", "delete note",  "remove note",
+        ]:
+            if lowered.startswith(prefix):
+                return cleaned[len(prefix):].strip().strip('"\'')
+
+        return cleaned
+
+    def handle(self, message: str) -> dict:
+        tool_results = []
+        lowered = message.lower()
+
+        # Delete intents — check before create so "delete task" doesn't also trigger create
+        is_delete = any(kw in lowered for kw in ["delete", "remove"])
+
+        if is_delete and "task" in lowered:
+            title = self._extract_delete_target(message)
+            if title is None:
+                count = self.local_tools.tasks.delete_all()
+                return {"answer": f"Deleted all {count} task(s).", "plan": {"steps": []}, "tool_results": []}
+            deleted = self.local_tools.tasks.delete_by_title(title)
+            answer = f"Task '{title}' deleted." if deleted else f"No task found with title '{title}'."
+            return {"answer": answer, "plan": {"steps": []}, "tool_results": []}
+
+        if is_delete and "note" in lowered:
+            title = self._extract_delete_target(message)
+            if title is None:
+                count = self.local_tools.notes.delete_all()
+                return {"answer": f"Deleted all {count} note(s).", "plan": {"steps": []}, "tool_results": []}
+            deleted = self.local_tools.notes.delete_by_title(title)
+            answer = f"Note '{title}' deleted." if deleted else f"No note found with title '{title}'."
+            return {"answer": answer, "plan": {"steps": []}, "tool_results": []}
+
+        # 1. Logic for Tasks
+        if "task" in lowered:
+            args = self._fallback_tool_args(message, "create_task")
+            try:
+                task = self.local_tools.execute("create_task", args)
+                tool_results.append({"tool_name": "create_task", "result": {"output": args}})
+            except DuplicateError as e:
+                return {
+                    "answer": str(e),
+                    "plan": {"steps": []},
+                    "tool_results": []
+                }
+
+        # 2. Logic for Notes — only if explicitly asking to create/add/save a note
+        note_keywords = ["create a note", "add a note", "save a note", "new note", "capture a note"]
+        if any(kw in lowered for kw in note_keywords):
+            args = self._fallback_tool_args(message, "create_note")
+            try:
+                self.local_tools.execute("create_note", args)
+                tool_results.append({"tool_name": "create_note", "result": {"output": args}})
+            except DuplicateError as e:
+                return {
+                    "answer": str(e),
+                    "plan": {"steps": []},
+                    "tool_results": []
+                }
+
+        # 3. Final Return (The UI reads this)
+        return {
+            "answer": f"I've processed your request: {message}",
+            "plan": {"steps": tool_results},
+            "tool_results": tool_results
+        }
